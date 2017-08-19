@@ -116,8 +116,9 @@ class BtManager:
         while base < len(data) and data[base] == '\x02':
             class Info(object):
                 def __str__(self):
-                    return "\nControl command: %s\nPayload length: %d\nPayload(hex): %s" % (
-                        self.command, self.payload_length, self.payload.encode('hex')
+                    return "\nControl command: %s(%s)\nPayload length: %d\nPayload(hex): %s" % (
+                        self.command, BtCommandByte.findCommand(self.command)
+                        , self.payload_length, self.payload.encode('hex')
                     )
             info = Info()
             _, info.command, _, info.payload_length = struct.unpack('<BBBH', data[base:base+5])

@@ -2,7 +2,14 @@
 # -*-coding:utf-8-*-
 __author__ = "ihciah"
 
-class BtCommandByte:
+
+class BtCommandByte(object):
+    @staticmethod
+    def findCommand(c):
+        keys = filter(lambda x: not x.startswith("__") and BtCommandByte.__getattribute__(BtCommandByte, x) == c,
+                      dir(BtCommandByte))
+        return keys[0] if keys else "NO_MATCH_COMMAND"
+
     __fmversion__ = "1.2.7"
     PRT_PRINT_DATA = 0
     PRT_PRINT_DATA_COMPRESS = 1
