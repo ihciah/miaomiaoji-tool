@@ -187,7 +187,7 @@ class BtManager:
 
     def queryHardwareInfo(self):
         msg = struct.pack('<B', 1)
-        self.sendToBt(msg, BtCommandByte.PRT_GET_BOARD_VERSION)
+        self.sendToBt(msg, BtCommandByte.PRT_GET_HW_INFO)
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
