@@ -1,5 +1,13 @@
 # 喵喵机蓝牙API By ihciah
 
+### 依赖
+
+`pybluez` 蓝牙API需要(树莓派上折腾这东西踩了挺多坑
+
+`twisted, pyopenssl` 微信接口脚本需要
+
+`cv2, numpy` 图像转换工具需要
+
 ### 建立连接
 
 `BtManager()` 参数留空会搜索附近可用的喵喵机并连接
