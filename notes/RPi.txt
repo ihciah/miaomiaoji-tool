@@ -1,0 +1,40 @@
+Bitmap is sent to the printer, whose width must be 384.
+bitmap->[bytes]->{packPerBytes(byte, BtCommandByte.PRT_PRINT_DATA, i)->sendMsgAllPackage} loop i
+
+packPerBytes(list input, byte command, int id):
+	result<Byte>=[2, command, id] 
+	
+
+===================
+
+Pre:
+1. Learn using bluetooth in android.
+http://www.jianshu.com/p/f5f0570132f4
+
+2. Collect serval versions of MiaoMiaoJi app.
+(1.0.2, 1.0.4, 1.0.7, 2.0.3 collected)
+
+
+DIY:
+1. Prepare bluetooth environment on PRi
+
+2. Break the 360 stub of MiaoMiaoJi apps and extract unencrypted classes.dex
+
+3. Analyse code related with bluetooth. Three class is mainly reversed: BtManager, ConnectThread, SendMsgThread
+Also, the DevManageActivity, OfflineModeActivity should be analysed.
+
+
+Problem 1:
+invalid UUID
+Solution:
+https://stackoverflow.com/questions/17216264/bluetooth-connection-between-android-and-linux-rpi-lost-on-first-write-action
+
+Problem 2: 
+bluetooth.btcommon.BluetoothError: (2, 'No such file or directory')
+Solution:
+https://stackoverflow.com/questions/33110992/python-code-for-bluetooth-throws-error-after-i-had-to-reset-the-adapter
+
+Problem 3:
+bluetooth.btcommon.BluetoothError: (2, 'No such file or directory')
+Solution:
+https://communities.intel.com/thread/76926

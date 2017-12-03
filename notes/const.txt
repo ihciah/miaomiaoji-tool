@@ -1,0 +1,62 @@
+BtCommand {
+        public static final int SEND_TYPE_FEED = 0;
+        public static final int SEND_TYPE_IMAGE = 5;
+        public static final int SEND_TYPE_QUERY_FW_VERSION = 2;
+        public static final int SEND_TYPE_QUERY_MAC_ADDRESS = 3;
+        public static final int SEND_TYPE_QUERY_SN = 1;
+        public static final int SEND_TYPE_SET_DENSITY = 4;
+    }
+
+	BtCommandByte.PRT_PRINT_DATA = 0;
+	BtCommandByte.PRT_PRINT_DATA_COMPRESS = 1;
+	BtCommandByte.PRT_FIRMWARE_DATA = 2;
+	BtCommandByte.PRT_USB_UPDATE_FIRMWARE = 3;
+	BtCommandByte.PRT_GET_VERSION = 4;
+	BtCommandByte.PRT_SENT_VERSION = 5;
+	BtCommandByte.PRT_GET_MODEL = 6;
+	BtCommandByte.PRT_SENT_MODEL = 7;
+	BtCommandByte.PRT_GET_BT_MAC = 8;
+	BtCommandByte.PRT_SENT_BT_MAC = 9;
+	BtCommandByte.PRT_GET_SN = 10;
+	BtCommandByte.PRT_SENT_SN = 11;
+	BtCommandByte.PRT_GET_STATUS = 12;
+	BtCommandByte.PRT_SENT_STATUS = 13;
+	BtCommandByte.PRT_GET_VOLTAGE = 14;
+	BtCommandByte.PRT_SENT_VOLTAGE = 15;
+	BtCommandByte.PRT_GET_BAT_STATUS = 16;
+	BtCommandByte.PRT_SENT_BAT_STATUS = 17;
+	BtCommandByte.PRT_GET_TEMP = 18;
+	BtCommandByte.PRT_SENT_TEMP = 19;
+	BtCommandByte.PRT_SET_FACTORY_STATUS = 20;
+	BtCommandByte.PRT_GET_FACTORY_STATUS = 21;
+	BtCommandByte.PRT_SENT_FACTORY_STATUS = 22;
+	BtCommandByte.PRT_SENT_BT_STATUS = 23;
+	BtCommandByte.PRT_SET_CRC_KEY = 24;
+	BtCommandByte.PRT_SET_HEAT_DENSITY = 25;
+	BtCommandByte.PRT_FEED_LINE = 26;
+	BtCommandByte.PRT_MAX_CMD = 27;
+			
+
+    public final class BtCommand {
+    public static final int SEND_TYPE_FEED = 0;
+	public static final int SEND_TYPE_IMAGE = 5;
+	public static final int SEND_TYPE_QUERY_FW_VERSION = 2;
+	public static final int SEND_TYPE_QUERY_MAC_ADDRESS = 3;
+	public static final int SEND_TYPE_QUERY_SN = 1;
+	public static final int SEND_TYPE_SET_DENSITY = 4;
+	}
+	
+	
+	BtPrompt {
+        public static final int BT_CONNECTED = 52;
+        public static final int BT_CONNECTING = 51;
+        public static final int BT_DISCONNECT = 53;
+        public static final int BT_NOT_OPEN = 50;
+        public static final int BT_RECONNECT = 54;
+        public static final int MSG_NULL = 48;
+        public static final int MSG_RECV = 49;
+	}
+			
+			
+    public static final String DEVICE_NAME = "MiaoMiaoJi";
+    public static final String SerialPortServiceClass_UUID = "00001101-0000-1000-8000-00805F9B34FB";

@@ -1,0 +1,2353 @@
+package cn.paperang.mm.bluetooth;
+
+import HPRTAndroidSDK.utils.ImageUtil;
+import android.app.Activity;
+import android.app.Dialog;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
+import android.content.BroadcastReceiver;
+import android.content.ContentValues;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
+import android.os.Parcelable;
+import android.support.annotation.NonNull;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.text.TextWatcher;
+import android.util.Log;
+import android.view.View$OnClickListener;
+import android.view.View;
+import android.widget.AdapterView$OnItemClickListener;
+import android.widget.AdapterView;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.ListView;
+import android.widget.TextView;
+import cn.paperang.mm.api.apiclient.DeviceApiClient;
+import cn.paperang.mm.app.BaseApplication;
+import cn.paperang.mm.async.BaseAsyncTask$OnTaskReturnListener;
+import cn.paperang.mm.async.FakeImageAsyncTask;
+import cn.paperang.mm.async.ProcessImageAsyncTask;
+import cn.paperang.mm.common.Const$BtCommandByte;
+import cn.paperang.mm.common.Const$Path;
+import cn.paperang.mm.dao.ChatMessageDao;
+import cn.paperang.mm.db.original.DBManager;
+import cn.paperang.mm.eventbus.GetMsgEvent;
+import cn.paperang.mm.modules.account.manager.UserInfoManager;
+import cn.paperang.mm.modules.base.BaseActivity;
+import cn.paperang.mm.modules.chat.m.ChatMessageInfo;
+import cn.paperang.mm.modules.device.adapter.DeviceListAdapter;
+import cn.paperang.mm.modules.device.m.BtStatusChangeEvent;
+import cn.paperang.mm.modules.device.m.DeviceLoginRequest;
+import cn.paperang.mm.modules.device.v.DevConnByOtherDialog;
+import cn.paperang.mm.modules.device.v.DevSearchActivity;
+import cn.paperang.mm.modules.device.v.DevStatusDialog;
+import cn.paperang.mm.modules.device.v.DevUpdateActivity;
+import cn.paperang.mm.modules.main.m.DevHistoryModel;
+import cn.paperang.mm.modules.main.m.SwVersionResult;
+import cn.paperang.mm.oss.OssFileUtil;
+import cn.paperang.mm.oss.PutObjectSwPackage;
+import cn.paperang.mm.oss.listener.DownloadFromOssCallback;
+import cn.paperang.mm.utils.AnimationDrawable;
+import cn.paperang.mm.utils.CommonUtils;
+import cn.paperang.mm.utils.DialogUtils$DialogYesNoClickListener;
+import cn.paperang.mm.utils.DialogUtils;
+import cn.paperang.mm.utils.LogUtil;
+import cn.paperang.mm.utils.MsgQueueUtil;
+import cn.paperang.mm.utils.PreferencesUtils;
+import cn.paperang.mm.utils.ToastUtils;
+import cn.paperang.mm.widget.HorizontalAdjustView;
+import com.lib_utils.ConvertUtils;
+import com.lib_utils.CustomToast;
+import com.lib_utils.FileUtils;
+import com.lib_utils.ImageUtils;
+import com.lib_utils.TimeUtils;
+import com.libcore.util.AppInfoUtils;
+import com.nostra13.universalimageloader.core.ImageLoader;
+import com.nostra13.universalimageloader.core.assist.FailReason;
+import com.nostra13.universalimageloader.core.listener.SimpleImageLoadingListener;
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
+import java.io.UnsupportedEncodingException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import org.greenrobot.eventbus.EventBus;
+
+public class BtManager {
+    class cn.paperang.mm.bluetooth.BtManager$1 extends Handler {
+        cn.paperang.mm.bluetooth.BtManager$1(BtManager arg1) {
+            BtManager.this = arg1;
+            super();
+        }
+
+        public void handleMessage(Message arg28) {
+            Bundle v13;
+            int v24;
+            byte[] v7;
+            switch(arg28.what) {
+                case 48: {
+                    goto label_792;
+                }
+                case 49: {
+                    goto label_6;
+                }
+                case 50: {
+                    goto label_798;
+                }
+                case 51: {
+                    goto label_735;
+                }
+                case 52: {
+                    goto label_763;
+                }
+                case 53: {
+                    goto label_807;
+                }
+                case 54: {
+                    goto label_820;
+                }
+                case 55: 
+                case 56: {
+                    goto label_882;
+                }
+                case 10000: {
+                    goto label_848;
+                }
+                case 10086: {
+                    goto label_856;
+                }
+            }
+
+            return;
+        label_882:
+            Intent v15 = new Intent();
+            v15.setAction("cn.paperang.mm.refresh_ui");
+            BtManager.mContext.sendBroadcast(v15);
+            return;
+        label_820:
+            LogUtil.e("BT_RECONNECT");
+            if(BtManager.this.isUserDisconnect()) {
+                if(!BtManager.this.isUpdate()) {
+                }
+                else if(BtManager.this.isUpdating()) {
+                    goto label_837;
+                }
+
+                return;
+            }
+
+        label_837:
+            BtManager.this.connectBondedBtDevice(BtManager.this.devMacForConnect);
+            return;
+        label_6:
+            byte[] v17 = arg28.getData().getByteArray("recv");
+            if(v17 == null) {
+                return;
+            }
+
+            if(v17.length < 2) {
+                return;
+            }
+
+            if(v17[1] == BtCommandByte.PRT_SET_CRC_KEY) {
+                if(BtManager.this.onBtDevConnectListener != null) {
+                    BtManager.this.cancelDiscovery();
+                    LogUtil.e("onBtDevConnectSuccess");
+                    BtManager.this.onBtDevConnectListener.onBtDevConnectSuccess(BtManager.this.getCurrentBtDevice());
+                }
+
+                BtManager.this.setIsConnecting(false);
+                BtManager.this.setIsConnect(true);
+                BtManager.this.setIsUserDisconnect(false);
+                ToastUtils.showConnSuccessToast(BtManager.mContext);
+                LogUtil.e("isConnect = " + BtManager.this.isConnect());
+                BtManager.this.queryVersionFromBt();
+            }
+
+            if(v17[1] == BtCommandByte.PRT_FIRMWARE_DATA) {
+                BtManager.this.removeListFirst();
+                if(BtManager.this.msgQueue.size() > 0) {
+                    if(BtManager.this.onBtFwUpdateListener != null) {
+                        BtManager.this.onBtFwUpdateListener.onBtFwUpdateProgress(v17[2] + 1);
+                    }
+
+                    BtManager.this.sendMsgAllPackage(BtManager.this.msgQueue.get(0));
+                }
+                else {
+                    if(BtManager.this.onBtFwUpdateListener == null) {
+                        goto label_119;
+                    }
+
+                    BtManager.this.onBtFwUpdateListener.onBtFwUpdateSuccess();
+                }
+            }
+
+        label_119:
+            if(v17[1] == BtCommandByte.PRT_SENT_VERSION) {
+                v7 = new byte[CommonUtils.byte2ToInt(new byte[]{v17[3], v17[4]}, 0)];
+                if(v17.length <= 5) {
+                    return;
+                }
+
+                v24 = 5;
+                try {
+                    System.arraycopy(v17, v24, v7, 0, v7.length);
+                }
+                catch(ArrayIndexOutOfBoundsException v24_1) {
+                }
+
+                byte[] v23 = new byte[]{v17[7], v17[6], v17[5]};
+                if(!TextUtils.isEmpty(BtManager.this.currentAddress)) {
+                    BtManager.this.saveDevVersionToDB(v23);
+                }
+
+                BtManager.this.querySNFromBt();
+                BtManager.this.sendDensityToBt();
+                BtManager.this.queryPowerOffTime();
+                BtManager.this.queryBatteryStatus();
+                BtManager.this.queryHardwareInfo();
+            }
+
+            if(v17[1] == BtCommandByte.PRT_SENT_STATUS) {
+                v7 = new byte[CommonUtils.byte2ToInt(new byte[]{v17[3], v17[4]}, 0)];
+                v24 = 5;
+                try {
+                    System.arraycopy(v17, v24, v7, 0, v7.length);
+                }
+                catch(ArrayIndexOutOfBoundsException v24_1) {
+                }
+
+                int v20 = v7.length == 2 ? CommonUtils.byte2ToInt(v7, 0) : CommonUtils.byte4ToInt(v7, 0);
+                LogUtil.e("status: " + v20);
+                ArrayList v21 = new ArrayList();
+                boolean[] v5 = new boolean[4];
+                String v22 = "";
+                if((v20 & 8) == 8) {
+                    v5[0] = true;
+                    v21.add(BtManager.mContext.getString(2131362140));
+                }
+                else {
+                    v5[0] = false;
+                }
+
+                if((v20 & 32) == 32) {
+                    v5[0] = true;
+                    v21.add(BtManager.mContext.getString(2131362142));
+                }
+                else {
+                    v5[0] = false;
+                }
+
+                if((v20 & 1) == 1) {
+                    if((v20 & 16) != 16) {
+                        v5[1] = true;
+                        v21.add(BtManager.mContext.getString(2131362143));
+                    }
+                    else {
+                        v5[1] = false;
+                    }
+                }
+
+                if((v20 & 2) == 2) {
+                    v5[2] = true;
+                    v21.add(BtManager.mContext.getString(2131362145));
+                    BtManager.this.setIsIdle(false);
+                }
+                else {
+                    v5[2] = false;
+                }
+
+                if((v20 & 16) == 16) {
+                    v5[3] = true;
+                    v21.add(BtManager.mContext.getString(2131362144));
+                }
+                else {
+                    v5[3] = false;
+                }
+
+                if((v20 & 4) == 4) {
+                    CustomToast.showToast(BtManager.mContext, BtManager.mContext.getString(2131362146));
+                    v21.add(BtManager.mContext.getString(2131362146));
+                    BtManager.this.setIsIdle(false);
+                }
+
+                if(v20 == 0) {
+                    CustomToast.showToast(BtManager.mContext, BtManager.mContext.getString(2131362141));
+                    int v14;
+                    for(v14 = 0; v14 < v5.length; ++v14) {
+                        v5[v14] = false;
+                    }
+
+                    BtManager.this.setIsIdle(true);
+                }
+
+                for(v14 = 0; v14 < ((List)v21).size(); ++v14) {
+                    v22 = v22 + (v14 + 1) + ". " + v21.get(v14) + "\n";
+                }
+
+                v13 = new Bundle();
+                v13.putBooleanArray("dev_status", v5);
+                v13.putString("str_status", v22);
+                v15 = new Intent();
+                v15.putExtras(v13);
+                if(!(BtManager.mContext instanceof DevStatusDialog) && !DevStatusDialog.isInstance) {
+                    if(!AppInfoUtils.isApplicationBroughtToBackground(BtManager.mContext)) {
+                        DevStatusDialog.isInstance = true;
+                        v15.setClass(BtManager.mContext, DevStatusDialog.class);
+                        BtManager.mContext.startActivity(v15);
+                        BtManager.mContext.overridePendingTransition(0, 0);
+                    }
+                    else {
+                    }
+
+                    goto label_465;
+                }
+
+                EventBus.getDefault().post(new BtStatusChangeEvent(v22, v5));
+            }
+
+        label_465:
+            if(v17[1] == BtCommandByte.PRT_SENT_SN) {
+                v7 = new byte[CommonUtils.byte2ToInt(new byte[]{v17[3], v17[4]}, 0)];
+                v24 = 5;
+                try {
+                    System.arraycopy(v17, v24, v7, 0, v7.length);
+                }
+                catch(ArrayIndexOutOfBoundsException v24_1) {
+                }
+
+                try {
+                    BtManager.this.saveDevSNToDB(new String(v7, "ISO-8859-1"));
+                }
+                catch(UnsupportedEncodingException v12) {
+                    v12.printStackTrace();
+                }
+            }
+
+            if(v17[1] == BtCommandByte.PRT_FEED_LINE) {
+                LogUtil.e(" was not found");
+                if(BtManager.this.onBtDevPrintListener != null) {
+                    LogUtil.e("onBtDevPrintFinish");
+                    BtManager.this.onBtDevPrintListener.onBtDevPrintFinish();
+                }
+
+                BtManager.this.setIsIdle(true);
+                if(BtManager.this.queue.size() <= 0) {
+                    goto label_552;
+                }
+
+                BtManager.this.sendToBt(BtManager.this.queue.get(0));
+                BtManager.this.queue.remove(0);
+            }
+
+        label_552:
+            if(v17[1] == BtCommandByte.PRT_SENT_POWER_DOWN_TIME) {
+                v7 = new byte[CommonUtils.byte2ToInt(new byte[]{v17[3], v17[4]}, 0)];
+                v24 = 5;
+                try {
+                    System.arraycopy(v17, v24, v7, 0, v7.length);
+                }
+                catch(ArrayIndexOutOfBoundsException v24_1) {
+                }
+
+                BtManager.this.saveDevPowerDownTimeToDB(v7);
+            }
+
+            if(v17[1] == BtCommandByte.PRT_SENT_BAT_STATUS) {
+                v7 = new byte[CommonUtils.byte2ToInt(new byte[]{v17[3], v17[4]}, 0)];
+                v24 = 5;
+                try {
+                    System.arraycopy(v17, v24, v7, 0, v7.length);
+                }
+                catch(ArrayIndexOutOfBoundsException v24_1) {
+                }
+
+                if(v7.length != 1) {
+                    goto label_629;
+                }
+
+                BtManager.this.saveDevBatteryToDB(v7[0]);
+            }
+
+        label_629:
+            if(v17[1] == BtCommandByte.PRT_SENT_BOARD_VERSION) {
+                LogUtil.e(ConvertUtils.bytesToHexString(v17));
+                v7 = new byte[CommonUtils.byte2ToInt(new byte[]{v17[3], v17[4]}, 0)];
+                v24 = 5;
+                try {
+                    System.arraycopy(v17, v24, v7, 0, v7.length);
+                }
+                catch(ArrayIndexOutOfBoundsException v24_1) {
+                }
+
+                try {
+                    LogUtil.e("MODEL = " + new String(v7, "ISO-8859-1"));
+                }
+                catch(UnsupportedEncodingException v12) {
+                    v12.printStackTrace();
+                }
+            }
+
+            if(v17[1] != BtCommandByte.PRT_DISCONNECT_BT_CMD) {
+                return;
+            }
+
+            if(!BtManager.this.isConnect) {
+                return;
+            }
+
+            BtManager.getInstance(BtManager.mContext).disconnectBT();
+            if(!(BtManager.mContext instanceof BaseActivity)) {
+                return;
+            }
+
+            v13 = new Bundle();
+            v13.putString("hint", BtManager.mContext.getString(2131361862));
+            BtManager.mContext.startActivity(DevConnByOtherDialog.class, v13);
+            BtManager.mContext.overridePendingTransition(0, 0);
+            return;
+        label_807:
+            BtManager.getInstance(BtManager.mContext).clearCurrentAddress();
+            BtManager.this.disconnectBT();
+            BtManager.this.setIsConnect(false);
+            return;
+        label_792:
+            CustomToast.showToast(BtManager.mContext, BtManager.mContext.getString(2131362247));
+            return;
+        label_856:
+            Object v16 = arg28.obj;
+            if(BtManager.mContext == null) {
+                return;
+            }
+
+            if(!(BtManager.mContext instanceof Activity)) {
+                return;
+            }
+
+            if(BtManager.mContext.isFinishing()) {
+                return;
+            }
+
+            DialogUtils.showYesNoDialog(BtManager.mContext, BtManager.mContext.getString(2131362030), new DialogYesNoClickListener(v16) {
+                public void onNoBtnClick(Dialog arg1) {
+                }
+
+                public void onYesBtnClick(Dialog arg5) {
+                    arg5.dismiss();
+                    Bundle v0 = new Bundle();
+                    v0.putString("localVersion", CommonUtils.byteVerToStr(this.val$obj));
+                    v0.putString("serverVersion", BtManager.getInstance(BtManager.mContext).getServerFwVersionInfo().versionName);
+                    BtManager.mContext.startActivityForResult(DevUpdateActivity.class, v0, 40);
+                }
+            });
+            return;
+        label_763:
+            BluetoothDevice v18 = BtManager.this.getCurrentBtDevice();
+            if(v18 == null) {
+                return;
+            }
+
+            BtManager.this.setCurrentAddress(v18.getAddress());
+            Log.d(BtManager.TAG, "\" instead of \"" + v18.getName() + ", MacAddress = " + v18.getAddress());
+            BtManager.this.sendCRCKey();
+            return;
+        label_798:
+            BtManager.getInstance(BtManager.mContext).clearCurrentAddress();
+            BtManager.this.setIsConnect(false);
+            return;
+        label_735:
+            BtManager.this.btSocket = arg28.obj;
+            if(BtManager.this.btSocket == null) {
+            }
+            else {
+                BtManager.this.sendMsgToBT(BtManager.this.btSocket);
+                BtManager.this.setIsConnecting(true);
+                return;
+            label_848:
+                CustomToast.showToast(BtManager.mContext, arg28.obj);
+            }
+        }
+    }
+
+    class cn.paperang.mm.bluetooth.BtManager$5 implements AdapterView$OnItemClickListener {
+        cn.paperang.mm.bluetooth.BtManager$5(BtManager arg1) {
+            BtManager.this = arg1;
+            super();
+        }
+
+        public void onItemClick(AdapterView arg3, View arg4, int arg5, long arg6) {
+            switch(arg3.getId()) {
+                case 2131755270: {
+                    BtManager.getInstance(BtManager.mContext).connect(BtManager.this.deviceList.get(arg5));
+                    BtManager.this.showConnectingDialog();
+                    break;
+                }
+            }
+        }
+    }
+
+    class BluetoothReceiver extends BroadcastReceiver {
+        BluetoothReceiver(BtManager arg1, cn.paperang.mm.bluetooth.BtManager$1 arg2) {
+            this(arg1);
+        }
+
+        private BluetoothReceiver(BtManager arg1) {
+            BtManager.this = arg1;
+            super();
+        }
+
+        private void abortBtBroadcast() {
+            try {
+                if(!this.isOrderedBroadcast()) {
+                    return;
+                }
+
+                LogUtil.e("isOrderedBroadcast");
+                this.abortBroadcast();
+            }
+            catch(Exception v0) {
+            }
+        }
+
+        public void onReceive(Context arg8, Intent arg9) {
+            Parcelable v2;
+            String v0 = arg9.getAction();
+            if(v0.equals(Integer.valueOf(1))) {
+                LogUtil.e("STATE_CONNECTING");
+            }
+
+            if(v0.equals("android.bluetooth.adapter.action.STATE_CHANGED")) {
+                LogUtil.e("ACTION_STATE_CHANGED");
+                BtManager.this.btStateChanged(arg9);
+            }
+
+            if(v0.equals("android.bluetooth.device.action.FOUND")) {
+                LogUtil.d("ACTION_FOUND");
+                BtManager.this.btFound(arg9);
+            }
+
+            if(v0.equals("android.bluetooth.device.action.BOND_STATE_CHANGED")) {
+                v2 = arg9.getParcelableExtra("android.bluetooth.device.extra.DEVICE");
+                switch(((BluetoothDevice)v2).getBondState()) {
+                    case 10: {
+                        goto label_105;
+                    }
+                    case 11: {
+                        goto label_93;
+                    }
+                    case 12: {
+                        goto label_98;
+                    }
+                }
+
+                goto label_29;
+            label_98:
+                LogUtil.e("BOND_BONDED");
+                BtManager.this.handler.sendEmptyMessage(55);
+                goto label_29;
+            label_105:
+                LogUtil.e("BOND_NONE");
+                Log.d(BtManager.TAG, " waiting=");
+                BtManager.getInstance(BtManager.mContext).setIsNeedReconnect(false);
+                BtManager.this.handler.sendEmptyMessage(56);
+                goto label_29;
+            label_93:
+                LogUtil.e("BOND_BONDING");
+                BtManager.this.bondBtDevice(((BluetoothDevice)v2));
+            }
+
+        label_29:
+            if(v0.equals("android.bluetooth.device.action.ACL_DISCONNECT_REQUESTED")) {
+                LogUtil.e("ACTION_ACL_DISCONNECT_REQUESTED");
+            }
+
+            if(v0.equals("android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED")) {
+                LogUtil.e("ACTION_CONNECTION_STATE_CHANGED");
+            }
+
+            if(v0.equals("android.bluetooth.device.action.ACL_CONNECTED")) {
+                LogUtil.e("ACTION_ACL_CONNECTED");
+                arg9.getParcelableExtra("android.bluetooth.device.extra.DEVICE");
+                BtManager.this.setIsUserDisconnect(false);
+            }
+
+            if(v0.equals("android.bluetooth.device.action.ACL_DISCONNECTED")) {
+                LogUtil.e("ACTION_ACL_DISCONNECTED");
+                v2 = arg9.getParcelableExtra("android.bluetooth.device.extra.DEVICE");
+                LogUtil.e("isUserDisconnect = " + BtManager.this.isUserDisconnect() + ", isNeedReconnect = " + BtManager.this.isNeedReconnect());
+                if((BtManager.this.isUserDisconnect()) || !BtManager.this.isNeedReconnect()) {
+                    BtManager.this.setIsNeedReconnect(true);
+                }
+                else {
+                    CustomToast.showToast(BtManager.mContext, arg8.getString(2131361870));
+                    Log.d(BtManager.TAG, " y " + ((BluetoothDevice)v2).getAddress());
+                    BtManager.this.onBtDevReconnect(((BluetoothDevice)v2));
+                }
+
+                BtManager.this.setIsUserDisconnect(false);
+            }
+        }
+    }
+
+    class Holder {
+        private static final BtManager btManager;
+
+        static {
+            Holder.btManager = new BtManager();
+        }
+
+        private Holder() {
+            super();
+        }
+
+        static BtManager access$2300() {
+            return Holder.btManager;
+        }
+    }
+
+    public interface OnBtConnListener {
+        void onBtDevConnectSuccess(BluetoothDevice arg1);
+
+        void onBtDevFound(BluetoothDevice arg1, int arg2);
+    }
+
+    public abstract class OnBtDevConnectListener implements OnBtConnListener {
+        public OnBtDevConnectListener() {
+            super();
+        }
+
+        public void onBtDevConnectSuccess(BluetoothDevice arg1) {
+        }
+
+        public void onBtDevFound(BluetoothDevice arg1, int arg2) {
+        }
+    }
+
+    public class OnBtDevPrintListener implements OnBtPrintListener {
+        public OnBtDevPrintListener() {
+            super();
+        }
+
+        public void onBtDataSendFinish() {
+        }
+
+        public void onBtDevPrintFinish() {
+        }
+    }
+
+    public interface OnBtFwUpdateListener {
+        void onBtFwUpdateFailed();
+
+        void onBtFwUpdateProgress(int arg1);
+
+        void onBtFwUpdateStart(int arg1);
+
+        void onBtFwUpdateSuccess();
+    }
+
+    public interface OnBtPrintListener {
+        void onBtDataSendFinish();
+
+        void onBtDevPrintFinish();
+    }
+
+    public interface OnPrintCallBack {
+        void onPrintGraphic(int arg1);
+
+        void onPrintText(int arg1);
+    }
+
+    public static final int BT_CONNECTING = 2;
+    public static final int BT_CONNECT_SUCCESS = 3;
+    public static final int BT_SEARCHING = 1;
+    public int BitmapWidth;
+    private int LBlank;
+    public static final int PRINT_TYPE_LABEL = 1;
+    public static final int PRINT_TYPE_NORMAL;
+    public int PrintDataHeight;
+    private int RBlank;
+    public byte ScaleMode;
+    private static final String TAG;
+    private BluetoothReceiver bluetoothReceiver;
+    private BluetoothAdapter btAdapter;
+    private BluetoothSocket btSocket;
+    private Dialog catSearchDialog;
+    private ConnectThread connectThread;
+    private long[] crc32tab;
+    private long crcKey;
+    public String currentAddress;
+    public String devMacForConnect;
+    private List deviceList;
+    private DeviceListAdapter deviceListAdapter;
+    private SwVersionResult fwVersionInfo;
+    private Handler handler;
+    private boolean isConnect;
+    private boolean isConnectHistory;
+    private boolean isConnecting;
+    private boolean isIdle;
+    private boolean isNeedReconnect;
+    private boolean isUpdate;
+    private boolean isUpdating;
+    private boolean isUserDisconnect;
+    private static Context mContext;
+    private List msgQueue;
+    private OnBtDevConnectListener onBtDevConnectListener;
+    private OnBtDevPrintListener onBtDevPrintListener;
+    private OnBtFwUpdateListener onBtFwUpdateListener;
+    private AdapterView$OnItemClickListener onItemClickListener;
+    private List queue;
+    private List receives;
+    private SendMsgThread sendMsgThread;
+    private long standardKey;
+
+    static {
+        BtManager.TAG = BtManager.class.getSimpleName();
+    }
+
+    public BtManager() {
+        super();
+        this.isConnect = false;
+        this.currentAddress = "";
+        this.isConnectHistory = false;
+        this.BitmapWidth = 0;
+        this.PrintDataHeight = 0;
+        this.ScaleMode = 0;
+        this.LBlank = 0;
+        this.RBlank = 0;
+        this.isUserDisconnect = false;
+        this.isIdle = true;
+        this.msgQueue = new ArrayList();
+        this.queue = new ArrayList();
+        this.deviceList = new ArrayList();
+        this.isNeedReconnect = true;
+        this.isUpdate = false;
+        this.isUpdating = false;
+        this.receives = new ArrayList();
+        this.isConnecting = false;
+        this.crc32tab = new long[]{0, 1996959894, 3993919788L, 2567524794L, 124634137, 1886057615, 3915621685L, 2657392035L, 249268274, 2044508324, 3772115230L, 2547177864L, 162941995, 2125561021, 3887607047L, 2428444049L, 498536548, 1789927666, 4089016648L, 2227061214L, 450548861, 1843258603, 4107580753L, 2211677639L, 325883990, 1684777152, 4251122042L, 2321926636L, 335633487, 1661365465, 4195302755L, 2366115317L, 997073096, 1281953886, 3579855332L, 2724688242L, 1006888145, 1258607687, 3524101629L, 2768942443L, 901097722, 1119000684, 3686517206L, 2898065728L, 853044451, 1172266101, 3705015759L, 2882616665L, 651767980, 1373503546, 3369554304L, 3218104598L, 565507253, 1454621731, 3485111705L, 3099436303L, 671266974, 1594198024, 3322730930L, 2970347812L, 795835527, 1483230225, 3244367275L, 3060149565L, 1994146192, 31158534, 2563907772L, 4023717930L, 1907459465, 112637215, 2680153253L, 3904427059L, 2013776290, 251722036, 2517215374L, 3775830040L, 2137656763, 141376813, 2439277719L, 3865271297L, 1802195444, 476864866, 2238001368L, 4066508878L, 1812370925, 453092731, 2181625025L, 4111451223L, 1706088902, 314042704, 2344532202L, 4240017532L, 1658658271, 366619977, 2362670323L, 4224994405L, 1303535960, 984961486, 2747007092L, 3569037538L, 1256170817, 1037604311, 2765210733L, 3554079995L, 1131014506, 879679996, 2909243462L, 3663771856L, 1141124467, 855842277, 2852801631L, 3708648649L, 1342533948, 654459306, 3188396048L, 3373015174L, 1466479909, 544179635, 3110523913L, 3462522015L, 1591671054, 702138776, 2966460450L, 3352799412L, 1504918807, 783551873, 3082640443L, 3233442989L, 3988292384L, 2596254646L, 62317068, 1957810842, 3939845945L, 2647816111L, 81470997, 1943803523, 3814918930L, 2489596804L, 225274430, 2053790376, 3826175755L, 2466906013L, 167816743, 2097651377, 4027552580L, 2265490386L, 503444072, 1762050814, 4150417245L, 2154129355L, 426522225, 1852507879, 4275313526L, 2312317920L, 282753626, 1742555852, 4189708143L, 2394877945L, 397917763, 1622183637, 3604390888L, 2714866558L, 953729732, 1340076626, 3518719985L, 2797360999L, 1068828381, 1219638859, 3624741850L, 2936675148L, 906185462, 1090812512, 3747672003L, 2825379669L, 829329135, 1181335161, 3412177804L, 3160834842L, 628085408, 1382605366, 3423369109L, 3138078467L, 570562233, 1426400815, 3317316542L, 2998733608L, 733239954, 1555261956, 3268935591L, 3050360625L, 752459403, 1541320221, 2607071920L, 3965973030L, 1969922972, 40735498, 2617837225L, 3943577151L, 1913087877, 83908371, 2512341634L, 3803740692L, 2075208622, 213261112, 2463272603L, 3855990285L, 2094854071, 198958881, 2262029012L, 4057260610L, 1759359992, 534414190, 2176718541L, 4139329115L, 1873836001, 414664567, 2282248934L, 4279200368L, 1711684554, 285281116, 2405801727L, 4167216745L, 1634467795, 376229701, 2685067896L, 3608007406L, 1308918612, 956543938, 2808555105L, 3495958263L, 1231636301, 1047427035, 2932959818L, 3654703836L, 1088359270, 936918000, 2847714899L, 3736837829L, 1202900863, 817233897, 3183342108L, 3401237130L, 1404277552, 615818150, 3134207493L, 3453421203L, 1423857449, 601450431, 3009837614L, 3294710456L, 1567103746, 711928724, 3020668471L, 3272380065L, 1510334235, 755167117};
+        this.handler = new cn.paperang.mm.bluetooth.BtManager$1(this);
+        this.onItemClickListener = new cn.paperang.mm.bluetooth.BtManager$5(this);
+    }
+
+    static OnBtDevConnectListener access$000(BtManager arg1) {
+        return arg1.onBtDevConnectListener;
+    }
+
+    static Context access$100() {
+        return BtManager.mContext;
+    }
+
+    static void access$1000(BtManager arg0, byte[] arg1) {
+        arg0.saveDevPowerDownTimeToDB(arg1);
+    }
+
+    static void access$1100(BtManager arg0, int arg1) {
+        arg0.saveDevBatteryToDB(arg1);
+    }
+
+    static boolean access$1200(BtManager arg1) {
+        return arg1.isConnect;
+    }
+
+    static BluetoothSocket access$1300(BtManager arg1) {
+        return arg1.btSocket;
+    }
+
+    static BluetoothSocket access$1302(BtManager arg0, BluetoothSocket arg1) {
+        arg0.btSocket = arg1;
+        return arg1;
+    }
+
+    static void access$1400(BtManager arg0, BluetoothSocket arg1) {
+        arg0.sendMsgToBT(arg1);
+    }
+
+    static String access$1500() {
+        return BtManager.TAG;
+    }
+
+    static void access$1600(BtManager arg0) {
+        arg0.sendCRCKey();
+    }
+
+    static Handler access$1700(BtManager arg1) {
+        return arg1.handler;
+    }
+
+    static void access$1800(BtManager arg0, BluetoothDevice arg1) {
+        arg0.addToBtList(arg1);
+    }
+
+    static DeviceListAdapter access$1900(BtManager arg1) {
+        return arg1.deviceListAdapter;
+    }
+
+    static void access$200(BtManager arg0) {
+        arg0.removeListFirst();
+    }
+
+    static List access$2000(BtManager arg1) {
+        return arg1.deviceList;
+    }
+
+    static Dialog access$2100(BtManager arg1) {
+        return arg1.catSearchDialog;
+    }
+
+    static Dialog access$2102(BtManager arg0, Dialog arg1) {
+        arg0.catSearchDialog = arg1;
+        return arg1;
+    }
+
+    static void access$2200(BtManager arg0) {
+        arg0.showConnectingDialog();
+    }
+
+    static void access$2400(BtManager arg0, Intent arg1) {
+        arg0.btStateChanged(arg1);
+    }
+
+    static void access$2500(BtManager arg0, Intent arg1) {
+        arg0.btFound(arg1);
+    }
+
+    static List access$300(BtManager arg1) {
+        return arg1.msgQueue;
+    }
+
+    static OnBtFwUpdateListener access$400(BtManager arg1) {
+        return arg1.onBtFwUpdateListener;
+    }
+
+    static void access$500(BtManager arg0, byte[] arg1) {
+        arg0.sendMsgAllPackage(arg1);
+    }
+
+    static void access$600(BtManager arg0, byte[] arg1) {
+        arg0.saveDevVersionToDB(arg1);
+    }
+
+    static void access$700(BtManager arg0, String arg1) {
+        arg0.saveDevSNToDB(arg1);
+    }
+
+    static OnBtDevPrintListener access$800(BtManager arg1) {
+        return arg1.onBtDevPrintListener;
+    }
+
+    static List access$900(BtManager arg1) {
+        return arg1.queue;
+    }
+
+    private List addBytesToList(byte[] arg11) {
+        ArrayList v1 = new ArrayList();
+        int v7 = 2016;
+        int v0 = arg11.length / v7;
+        int v2;
+        for(v2 = 0; v2 < v0; ++v2) {
+            byte[] v6 = new byte[v7];
+            System.arraycopy(arg11, v2 * v7, v6, 0, v7);
+            ((List)v1).add(v6);
+        }
+
+        int v4 = v2 * v7;
+        int v5 = arg11.length - v4;
+        if(v5 > 0) {
+            byte[] v3 = new byte[v5];
+            System.arraycopy(arg11, v4, v3, 0, v5);
+            ((List)v1).add(v3);
+        }
+
+        return ((List)v1);
+    }
+
+    private void addToBtList(BluetoothDevice arg3) {
+        int v0 = 0;
+        while(true) {
+            if(v0 >= this.deviceList.size()) {
+                break;
+            }
+            else if(!this.deviceList.contains(arg3)) {
+                ++v0;
+                continue;
+            }
+
+            return;
+        }
+
+        this.deviceList.add(arg3);
+    }
+
+    public boolean bondBtDevice(BluetoothDevice arg8) {
+        Object v3;
+        Boolean.valueOf(false);
+        try {
+            v3 = arg8.getClass().getMethod("createBond").invoke(arg8);
+        }
+        catch(IllegalAccessException v2) {
+            v2.printStackTrace();
+        }
+        catch(InvocationTargetException v2_1) {
+            v2_1.printStackTrace();
+        }
+        catch(NoSuchMethodException v2_2) {
+            v2_2.printStackTrace();
+        }
+
+        return ((Boolean)v3).booleanValue();
+    }
+
+    private void btFound(Intent arg6) {
+        Parcelable v0 = arg6.getParcelableExtra("android.bluetooth.device.extra.DEVICE");
+        int v2 = arg6.getExtras().getShort("android.bluetooth.device.extra.RSSI");
+        if(0 == 0 && v0 != null && ((BluetoothDevice)v0).getName() != null && ((((BluetoothDevice)v0).getName().equals("MiaoMiaoJi")) || (((BluetoothDevice)v0).getName().equals("Paperang")))) {
+            this.connectBT(((BluetoothDevice)v0), v2);
+        }
+    }
+
+    private void btStateChanged(Intent arg4) {
+        switch(arg4.getIntExtra("android.bluetooth.adapter.extra.STATE", -2147483648)) {
+            case 10: {
+                LogUtil.e("STATE_OFF 手机蓝牙关闭");
+                if(BtManager.mContext == null) {
+                    return;
+                }
+
+                if(!(BtManager.mContext instanceof DevUpdateActivity)) {
+                    return;
+                }
+
+                BtManager.mContext.finishUI();
+                break;
+            }
+            case 11: {
+                Log.d(BtManager.TAG, "STATE_TURNING_ON 手机蓝牙正在开启");
+                break;
+            }
+            case 12: {
+                this.startDiscovery();
+                break;
+            }
+            case 13: {
+                Log.d(BtManager.TAG, "STATE_TURNING_OFF 手机蓝牙正在关闭");
+                break;
+            }
+        }
+    }
+
+    private byte[] byteListToByteArray(List arg4) {
+        byte[] v0 = new byte[arg4.size()];
+        int v1;
+        for(v1 = 0; v1 < v0.length; ++v1) {
+            v0[v1] = arg4.get(v1).byteValue();
+        }
+
+        return v0;
+    }
+
+    public void cancelDiscovery() {
+        if(this.btAdapter != null && (this.btAdapter.isDiscovering())) {
+            LogUtil.e("cancelDiscovery");
+            this.btAdapter.cancelDiscovery();
+        }
+    }
+
+    public boolean cancelPairingUserInput(BluetoothDevice arg8) {
+        Object v3;
+        Boolean.valueOf(false);
+        try {
+            v3 = arg8.getClass().getMethod("cancelPairingUserInput").invoke(arg8);
+        }
+        catch(IllegalAccessException v2) {
+            v2.printStackTrace();
+        }
+        catch(InvocationTargetException v2_1) {
+            v2_1.printStackTrace();
+        }
+        catch(NoSuchMethodException v2_2) {
+            v2_2.printStackTrace();
+        }
+
+        return ((Boolean)v3).booleanValue();
+    }
+
+    public boolean checkIfBtConnected(boolean arg4) {
+        int v2 = 53;
+        if(this.btAdapter == null || !this.btAdapter.isEnabled()) {
+            this.handler.sendEmptyMessage(50);
+        }
+
+        if(this.sendMsgThread == null) {
+            this.handler.sendEmptyMessage(v2);
+        }
+
+        if(this.connectThread == null) {
+            this.handler.sendEmptyMessage(v2);
+        }
+
+        if(!this.isConnect && (arg4)) {
+            this.showIfNeedSearchBtDialog();
+        }
+
+        return this.isConnect;
+    }
+
+    public boolean checkIfBtConnected() {
+        return this.checkIfBtConnected(true);
+    }
+
+    private boolean checkIfCanPrint(byte[] arg2) {
+        return this.checkIfCanPrint(arg2, true);
+    }
+
+    private boolean checkIfCanPrint(byte[] arg4, boolean arg5) {
+        boolean v0 = false;
+        if(this.checkIfBtConnected(arg5)) {
+            if(arg4 == null) {
+                this.handler.sendEmptyMessage(48);
+            }
+            else {
+                v0 = true;
+            }
+        }
+
+        return v0;
+    }
+
+    public void clearCurrentAddress() {
+        this.setCurrentAddress("");
+    }
+
+    public void connect(BluetoothDevice arg4) {
+        this.connectThread = new ConnectThread(arg4, this.btAdapter, this.handler);
+        this.connectThread.start();
+    }
+
+    public void connectBT(BluetoothDevice arg3, int arg4) {
+        if(this.isConnectHistory()) {
+            if(arg3.getAddress().equals(this.devMacForConnect)) {
+                LogUtil.e("isConnectHistory, connect() = " + arg3.getAddress());
+                this.connect(arg3);
+            }
+
+            LogUtil.e("isConnectHistory --> devMacForConnect = " + this.devMacForConnect);
+        }
+        else {
+            if(this.onBtDevConnectListener == null) {
+                return;
+            }
+
+            LogUtil.e("onBtDevFound = " + arg3.getAddress());
+            this.onBtDevConnectListener.onBtDevFound(arg3, arg4);
+        }
+    }
+
+    public void connectBondedBtDevice(String arg5) {
+        LogUtil.e("connectBondedBtDevice = " + arg5);
+        this.disconnectBT();
+        Iterator v2 = this.btAdapter.getBondedDevices().iterator();
+        while(v2.hasNext()) {
+            Object v1 = v2.next();
+            if(!((BluetoothDevice)v1).getAddress().equals(arg5)) {
+                continue;
+            }
+
+            this.connectBT(((BluetoothDevice)v1), 0);
+        }
+    }
+
+    public void connectBtAutomatically(String arg3) {
+        BtManager.getInstance(BtManager.mContext).requestBluetooth();
+        BtManager.getInstance(BtManager.mContext).setMacWillConnect(arg3);
+        BtManager.getInstance(BtManager.mContext).setOnBtDevConnectListener(new OnBtDevConnectListener(arg3) {
+            public void onBtDevConnectSuccess(BluetoothDevice arg1) {
+            }
+
+            public void onBtDevFound(BluetoothDevice arg3, int arg4) {
+                BtManager.this.addToBtList(arg3);
+                if(!TextUtils.isEmpty(this.val$devMac)) {
+                    BtManager.getInstance(BtManager.mContext).connectBondedBtDevice(BtManager.getInstance(BtManager.mContext).devMacForConnect);
+                }
+                else {
+                    BtManager.getInstance(BtManager.mContext).cancelDiscovery();
+                }
+            }
+        });
+    }
+
+    private long crc32(long arg10, byte[] arg12, int arg13) {
+        long v6 = 4294967295L;
+        arg10 ^= v6;
+        int v0;
+        for(v0 = 0; v0 < arg13; ++v0) {
+            arg10 = this.crc32tab[((int)(((((long)arg12[v0])) ^ arg10) & 255))] ^ arg10 >>> 8;
+        }
+
+        return arg10 ^ v6;
+    }
+
+    private long crc32(byte[] arg3, int arg4) {
+        return this.crc32(this.crcKey, arg3, arg4);
+    }
+
+    public void disconnectBT() {
+        if(!this.isUpdate() && !this.isUpdating()) {
+            this.clearCurrentAddress();
+            this.setIsUserDisconnect(true);
+        }
+
+        this.setIsConnect(false);
+        if(this.connectThread != null) {
+            this.connectThread.interrupt();
+            this.connectThread = null;
+        }
+
+        if(this.sendMsgThread != null) {
+            this.sendMsgThread.stopThread();
+        }
+    }
+
+    private void downloadFwBin(String arg4, byte[] arg5) {
+        new PutObjectSwPackage().asyncGetObjectToLocalFile(OssFileUtil.getObjKeySwPackage(arg4), new DownloadFromOssCallback(arg5) {
+            public void onCancel() {
+            }
+
+            public void onFailure() {
+            }
+
+            public void onProgress(int arg1) {
+            }
+
+            public void onSuccess(byte[] arg8) {
+                File v0 = FileUtils.getFileByName(Path.APPLICATION, "/apps/", "mmj_fw.bin");
+                try {
+                    FileOutputStream v2 = new FileOutputStream(v0);
+                    v2.write(arg8, 0, arg8.length);
+                    v2.close();
+                }
+                catch(IOException v1) {
+                    v1.printStackTrace();
+                }
+                catch(FileNotFoundException v1_1) {
+                    v1_1.printStackTrace();
+                }
+
+                if(v0.exists()) {
+                    Message v3 = new Message();
+                    v3.obj = this.val$versionBytes;
+                    v3.what = 10086;
+                    BtManager.this.handler.sendMessage(v3);
+                }
+            }
+        });
+    }
+
+    public BluetoothDevice getCurrentBtDevice() {
+        BluetoothDevice v0 = this.btSocket != null ? this.btSocket.getRemoteDevice() : null;
+        return v0;
+    }
+
+    public static BtManager getInstance(Context arg2) {
+        BtManager v0_1;
+        Class v1 = BtManager.class;
+        __monitor_enter(v1);
+        try {
+            BtManager.mContext = arg2;
+            v0_1 = Holder.access$2300();
+        }
+        catch(Throwable v0) {
+            __monitor_exit(v1);
+            throw v0;
+        }
+
+        __monitor_exit(v1);
+        return v0_1;
+    }
+
+    public SwVersionResult getServerFwVersionInfo() {
+        if(this.fwVersionInfo == null) {
+            this.fwVersionInfo = new SwVersionResult();
+        }
+
+        return this.fwVersionInfo;
+    }
+
+    public void initBlueTooth() {
+        this.setIsUserDisconnect(true);
+        this.disconnectBT();
+        this.btAdapter = BluetoothAdapter.getDefaultAdapter();
+        this.registerBluetooth();
+        if(this.btAdapter != null) {
+            if(!this.btAdapter.isEnabled()) {
+                this.btAdapter.enable();
+            }
+            else {
+                this.startDiscovery();
+                this.setDiscoverableTimeout(30000);
+            }
+        }
+    }
+
+    public boolean isConnect() {
+        return this.isConnect;
+    }
+
+    public boolean isConnectHistory() {
+        return this.isConnectHistory;
+    }
+
+    public boolean isConnecting() {
+        return this.isConnecting;
+    }
+
+    public boolean isIdle() {
+        return this.isIdle;
+    }
+
+    public boolean isNeedReconnect() {
+        return this.isNeedReconnect;
+    }
+
+    public boolean isUpdate() {
+        return this.isUpdate;
+    }
+
+    public boolean isUpdating() {
+        return this.isUpdating;
+    }
+
+    public boolean isUserDisconnect() {
+        return this.isUserDisconnect;
+    }
+
+    public File makeFilePath(String arg5, String arg6) {
+        File v2;
+        File v1 = null;
+        BtManager.makeRootDirectory(arg5);
+        try {
+            v2 = new File(arg5 + arg6);
+        }
+        catch(Exception v0) {
+            goto label_15;
+        }
+
+        try {
+            if(!v2.exists()) {
+                v2.createNewFile();
+            }
+
+            return v2;
+        }
+        catch(Exception v0) {
+            v1 = v2;
+        }
+
+    label_15:
+        v0.printStackTrace();
+        return v1;
+    }
+
+    public static void makeRootDirectory(String arg6) {
+        File v2;
+        try {
+            v2 = new File(arg6);
+        }
+        catch(Exception v0) {
+            goto label_9;
+        }
+
+        try {
+            if(v2.exists()) {
+                return;
+            }
+
+            v2.mkdir();
+            return;
+        }
+        catch(Exception v0) {
+        }
+
+    label_9:
+        Log.e("error:", v0 + "");
+    }
+
+    public void onBtDevReconnect(BluetoothDevice arg2) {
+        this.onBtDevReconnect(arg2, null);
+    }
+
+    public void onBtDevReconnect(BluetoothDevice arg3, OnBtDevConnectListener arg4) {
+        this.onBtDevConnectListener = arg4;
+        this.setIsConnect(false);
+        this.devMacForConnect = arg3.getAddress();
+        LogUtil.e("Reconnect --> btAddress = " + arg3.getAddress());
+        this.clearCurrentAddress();
+        this.handler.sendEmptyMessage(54);
+    }
+
+    public void onGoToAddDevices() {
+        BtManager.getInstance(BtManager.mContext).setIsUserDisconnect(true);
+        this.deviceList.clear();
+        this.catSearchDialog = DialogUtils.showCatSearchDialog(BtManager.mContext);
+        View v1 = this.catSearchDialog.findViewById(2131755270);
+        this.deviceListAdapter = new DeviceListAdapter(BtManager.mContext, this.deviceList);
+        ((ListView)v1).setAdapter(this.deviceListAdapter);
+        ((ListView)v1).setOnItemClickListener(this.onItemClickListener);
+        AnimationDrawable.animateRawManuallyFromXML(2130837590, this.catSearchDialog.findViewById(2131755267), null, null);
+        this.catSearchDialog.show();
+        BtManager.getInstance(BtManager.mContext).requestBluetooth();
+        BtManager.getInstance(BtManager.mContext).setOnBtDevConnectListener(new OnBtDevConnectListener() {
+            public void onBtDevConnectSuccess(BluetoothDevice arg9) {
+                if(BtManager.this.catSearchDialog != null) {
+                    BtManager.this.catSearchDialog.setContentView(2130968722);
+                    View v2 = BtManager.this.catSearchDialog.findViewById(2131755567);
+                    if(CommonUtils.isChineseLanguage(BtManager.mContext.getResources())) {
+                        ((ImageView)v2).setImageResource(2130838168);
+                    }
+                    else if(CommonUtils.isKoreanLanguage(BtManager.mContext.getResources())) {
+                        ((ImageView)v2).setImageResource(2130838169);
+                    }
+
+                    BtManager.this.handler.postDelayed(new Runnable() {
+                        public void run() {
+                            if(this.this$1.this$0.catSearchDialog != null) {
+                                this.this$1.this$0.catSearchDialog.dismiss();
+                                this.this$1.this$0.catSearchDialog = null;
+                            }
+                        }
+                    }, 1000);
+                    BtManager.this.saveHistoryDeviceToDB(new DevHistoryModel(arg9.getName(), arg9.getAddress(), TimeUtils.getCurrentTime(" not updated inline; ")));
+                }
+            }
+
+            public void onBtDevFound(BluetoothDevice arg3, int arg4) {
+                BtManager.this.addToBtList(arg3);
+                if(BtManager.this.deviceListAdapter != null) {
+                    BtManager.this.deviceListAdapter.setData(BtManager.this.deviceList);
+                }
+            }
+        });
+    }
+
+    public void onGoToSearchDevices() {
+        if((BtManager.mContext instanceof Activity)) {
+            BtManager.mContext.startActivity(new Intent(BtManager.mContext, DevSearchActivity.class));
+        }
+    }
+
+    @NonNull private byte[] packPerBytes(List arg11, byte arg12, int arg13) {
+        ArrayList v7 = new ArrayList();
+        ((List)v7).add(Byte.valueOf(2));
+        ((List)v7).add(Byte.valueOf(arg12));
+        ((List)v7).add(Byte.valueOf(((byte)arg13)));
+        byte[] v4 = CommonUtils.intTo2Bytes(arg11.get(arg13).length);
+        int v5;
+        for(v5 = 0; v5 < v4.length; ++v5) {
+            ((List)v7).add(Byte.valueOf(v4[v5]));
+        }
+
+        Object v0 = arg11.get(arg13);
+        for(v5 = 0; v5 < v0.length; ++v5) {
+            ((List)v7).add(Byte.valueOf(v0[v5]));
+        }
+
+        byte[] v1 = CommonUtils.intTo4Bytes(((int)this.crc32(arg11.get(arg13), arg11.get(arg13).length)));
+        for(v5 = 0; v5 < v1.length; ++v5) {
+            ((List)v7).add(Byte.valueOf(v1[v5]));
+        }
+
+        ((List)v7).add(Byte.valueOf(3));
+        return this.byteListToByteArray(((List)v7));
+    }
+
+    public void queryBatteryStatus() {
+        byte[] v0 = new byte[]{1};
+        if(this.checkIfCanPrint(v0)) {
+            List v1 = this.addBytesToList(v0);
+            int v2;
+            for(v2 = 0; v2 < v1.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v1, BtCommandByte.PRT_GET_BAT_STATUS, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void queryHardwareInfo() {
+        byte[] v0 = new byte[]{1};
+        if(this.checkIfCanPrint(v0)) {
+            List v1 = this.addBytesToList(v0);
+            int v2;
+            for(v2 = 0; v2 < v1.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v1, BtCommandByte.PRT_GET_BOARD_VERSION, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void queryPowerOffTime() {
+        byte[] v0 = new byte[]{1};
+        if(this.checkIfCanPrint(v0)) {
+            List v1 = this.addBytesToList(v0);
+            int v2;
+            for(v2 = 0; v2 < v1.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v1, BtCommandByte.PRT_GET_POWER_DOWN_TIME, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void querySNFromBt() {
+        byte[] v1 = new byte[]{1};
+        if(this.checkIfCanPrint(v1)) {
+            List v0 = this.addBytesToList(v1);
+            int v2;
+            for(v2 = 0; v2 < v0.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v0, BtCommandByte.PRT_GET_SN, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void queryVersionFromBt() {
+        byte[] v0 = new byte[]{1};
+        if(this.checkIfCanPrint(v0)) {
+            List v1 = this.addBytesToList(v0);
+            int v2;
+            for(v2 = 0; v2 < v1.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v1, BtCommandByte.PRT_GET_VERSION, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    private byte[] readBytes() {
+        byte[] v1;
+        try {
+            FileInputStream v3 = new FileInputStream(FileUtils.getFileByName(Path.APPLICATION, "/apps/", "mmj_fw.bin"));
+            byte[] v0 = new byte[1024];
+            ByteArrayOutputStream v5 = new ByteArrayOutputStream();
+            while(true) {
+                int v4 = v3.read(v0);
+                if(v4 == -1) {
+                    break;
+                }
+
+                v5.write(v0, 0, v4);
+            }
+
+            v1 = v5.toByteArray();
+            v5.close();
+            v3.close();
+        }
+        catch(Exception v2) {
+            v2.printStackTrace();
+            v1 = null;
+        }
+
+        return v1;
+    }
+
+    private String readText() {
+        try {
+            if(!Environment.getExternalStorageState().equals("mounted")) {
+                return null;
+            }
+
+            BufferedReader v0 = new BufferedReader(new InputStreamReader(new FileInputStream(FileUtils.getFileByName(Path.APPLICATION, "/files/", "1111111.txt"))));
+            StringBuilder v4 = new StringBuilder("");
+            while(true) {
+                String v3 = v0.readLine();
+                if(v3 == null) {
+                    break;
+                }
+
+                v4.append(v3);
+            }
+
+            v0.close();
+            String v5 = v4.toString();
+            return v5;
+        }
+        catch(Exception v1) {
+            v1.printStackTrace();
+        }
+
+        return null;
+    }
+
+    public void registerBluetooth() {
+        this.unregisterBluetooth();
+        LogUtil.e("! more then 32768.");
+        try {
+            if(this.bluetoothReceiver == null) {
+                IntentFilter v1 = new IntentFilter();
+                v1.addAction("android.bluetooth.adapter.action.STATE_CHANGED");
+                v1.addAction("android.bluetooth.device.action.FOUND");
+                v1.addAction("android.bluetooth.device.action.BOND_STATE_CHANGED");
+                v1.addAction("android.bluetooth.device.action.ACL_CONNECTED");
+                v1.addAction("android.bluetooth.device.action.ACL_DISCONNECTED");
+                v1.addAction("android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED");
+                this.bluetoothReceiver = new BluetoothReceiver(this, null);
+                BtManager.mContext.registerReceiver(this.bluetoothReceiver, v1);
+                return;
+            }
+
+            Log.d(BtManager.TAG, "\"\r\n\r\n");
+        }
+        catch(Exception v0) {
+            LogUtil.e("registerBluetooth error = " + v0.toString());
+        }
+    }
+
+    public void registerCrcKeyToBt() {
+        this.standardKey = 896963873;
+        int v17 = ((int)(Math.random() * (((double)(this.crc32tab.length - 1)))));
+        this.crcKey = this.crc32tab[v17];
+        List v7 = this.addBytesToList(CommonUtils.intTo4Bytes(((int)(this.standardKey ^ this.crc32tab[v17]))));
+        int v12;
+        for(v12 = 0; v12 < v7.size(); ++v12) {
+            ArrayList v16 = new ArrayList();
+            v16.add(Byte.valueOf(2));
+            v16.add(Byte.valueOf(BtCommandByte.PRT_SET_CRC_KEY));
+            v16.add(Byte.valueOf(((byte)v12)));
+            byte[] v13 = CommonUtils.intTo2Bytes(v7.get(v12).length);
+            int v14;
+            for(v14 = 0; v14 < v13.length; ++v14) {
+                v16.add(Byte.valueOf(v13[v14]));
+            }
+
+            Object v6 = v7.get(v12);
+            for(v14 = 0; v14 < v6.length; ++v14) {
+                v16.add(Byte.valueOf(v6[v14]));
+            }
+
+            byte[] v9 = CommonUtils.intTo4Bytes(((int)this.crc32(this.standardKey, v7.get(v12), v7.get(v12).length)));
+            for(v14 = 0; v14 < v9.length; ++v14) {
+                v16.add(Byte.valueOf(v9[v14]));
+            }
+
+            v16.add(Byte.valueOf(3));
+            this.msgQueue.add(this.byteListToByteArray(v16));
+        }
+
+        this.sendMsgAllPackage(this.msgQueue.get(0));
+        this.msgQueue.clear();
+    }
+
+    public boolean removeBond(BluetoothDevice arg8) {
+        Object v3;
+        Boolean.valueOf(false);
+        try {
+            v3 = arg8.getClass().getMethod("removeBond").invoke(arg8);
+        }
+        catch(IllegalAccessException v1) {
+            v1.printStackTrace();
+        }
+        catch(InvocationTargetException v1_1) {
+            v1_1.printStackTrace();
+        }
+        catch(NoSuchMethodException v1_2) {
+            v1_2.printStackTrace();
+        }
+
+        return ((Boolean)v3).booleanValue();
+    }
+
+    private void removeListFirst() {
+        if(this.msgQueue.size() > 0) {
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void requestBluetooth() {
+        this.initBlueTooth();
+    }
+
+    private void saveDevBatteryToDB(int arg9) {
+        DBManager.getInstance(BtManager.mContext).updateByField("historyDevice", "userId", Integer.valueOf(UserInfoManager.getInstance().getUserInfo().userId), "devMac", this.currentAddress, "devBattery", Integer.valueOf(arg9));
+    }
+
+    private void saveDevPowerDownTimeToDB(byte[] arg9) {
+        DBManager.getInstance(BtManager.mContext).updateByField("historyDevice", "userId", Integer.valueOf(UserInfoManager.getInstance().getUserInfo().userId), "devMac", this.currentAddress, "devPowerDownTime", arg9);
+    }
+
+    private void saveDevSNToDB(String arg9) {
+        DBManager.getInstance(BtManager.mContext).updateByField("historyDevice", "userId", Integer.valueOf(UserInfoManager.getInstance().getUserInfo().userId), "devMac", this.currentAddress, "devSN", arg9);
+    }
+
+    private void saveDevVersionToDB(byte[] arg9) {
+        if(!BtManager.getInstance(BtManager.mContext).isUpdate) {
+            if(!BtManager.getInstance(BtManager.mContext).isUpdating) {
+                this.showIfFwUpdateDialog(arg9);
+            }
+            else if(((BtManager.mContext instanceof DevUpdateActivity)) && !BtManager.mContext.isFinishing()) {
+                BtManager.mContext.finishUI();
+            }
+        }
+
+        BtManager.getInstance(BtManager.mContext).setIsUpdate(false);
+        BtManager.getInstance(BtManager.mContext).setIsUpdating(false);
+        DBManager.getInstance(BtManager.mContext).updateByField("historyDevice", "userId", Integer.valueOf(UserInfoManager.getInstance().getUserInfo().userId), "devMac", this.currentAddress, "devVersion", arg9);
+    }
+
+    public boolean saveHistoryDeviceToDB(DevHistoryModel arg13) {
+        int v7 = UserInfoManager.getInstance().getUserInfo().userId;
+        String v2 = arg13.getDevName();
+        String v1 = arg13.getDevMac();
+        String v0 = arg13.getDateTime();
+        byte[] v4 = arg13.getDevVersion();
+        String v3 = arg13.getDevSN();
+        ContentValues v8 = new ContentValues();
+        v8.put("userId", Integer.valueOf(v7));
+        v8.put("devName", v2);
+        v8.put("devMac", v1);
+        v8.put("dateTime", v0);
+        v8.put("devVersion", v4);
+        v8.put("devSN", v3);
+        Boolean v5 = DBManager.getInstance(BtManager.mContext).isExistByField("historyDevice", "devMac", v1);
+        if(!v5.booleanValue()) {
+            v8.put("devDensity", Integer.valueOf(75));
+            DBManager.getInstance(BtManager.mContext).insert("historyDevice", null, v8);
+        }
+        else {
+            DBManager.getInstance(BtManager.mContext).updateByField("historyDevice", "devMac", v1, v8);
+        }
+
+        DeviceLoginRequest v6 = new DeviceLoginRequest();
+        v6.setUserId(UserInfoManager.getInstance().getUserInfo().userId);
+        v6.setDeviceName(v2);
+        v6.setDeviceMacAddress(v1);
+        v6.setDeviceGuid(v3);
+        v6.setDeviceType("mmj_p1_fw");
+        v6.setDeviceVersion(CommonUtils.byteVerToInt(v4));
+        v6.setPublicIp(PreferencesUtils.getPublicIpAddress());
+        v6.setAppVersion(AppInfoUtils.getAppVersionCode(BtManager.mContext));
+        v6.setAppType(1);
+        DeviceApiClient.deviceLogin(v6);
+        return v5.booleanValue();
+    }
+
+    public DevHistoryModel selectConnedDeviceFromDB() {
+        int v9 = UserInfoManager.getInstance().getUserInfo().userId;
+        String v5 = BtManager.getInstance(BtManager.mContext).currentAddress;
+        Cursor v6 = DBManager.getInstance(BtManager.mContext).selectByField("historyDevice", "userId", String.valueOf(v9), "devMac", v5);
+        DevHistoryModel v8 = null;
+        if(v6 != null) {
+            while(v6.moveToNext()) {
+                v8 = new DevHistoryModel("", v5, "");
+                v8.devName = v6.getString(v6.getColumnIndex("devName"));
+                v8.devAlias = v6.getString(v6.getColumnIndex("devAlias"));
+                v8.devMac = v6.getString(v6.getColumnIndex("devMac"));
+                v6.getString(v6.getColumnIndex("dateTime"));
+                if(TextUtils.isEmpty(v8.devAlias)) {
+                    v8.devAlias = v8.devName;
+                }
+
+                v8.devVersion = v6.getBlob(v6.getColumnIndex("devVersion"));
+                v8.devSN = v6.getString(v6.getColumnIndex("devSN"));
+                v8.devDensity = v6.getInt(v6.getColumnIndex("devDensity"));
+                v8.devBattery = v6.getInt(v6.getColumnIndex("devBattery"));
+                v8.devPowerDownTime = v6.getBlob(v6.getColumnIndex("devPowerDownTime"));
+            }
+
+            v6.close();
+        }
+
+        return v8;
+    }
+
+    private void sendCRCKey() {
+        this.handler.postDelayed(new Runnable() {
+            public void run() {
+                BtManager.this.registerCrcKeyToBt();
+                BtManager.this.handler.postDelayed(new Runnable() {
+                    public void run() {
+                        if(!this.this$1.this$0.isConnect()) {
+                            this.this$1.this$0.sendCRCKey();
+                        }
+                    }
+                }, 2000);
+            }
+        }, 100);
+    }
+
+    public void sendDensityToBt() {
+        Cursor v0 = DBManager.getInstance(BtManager.mContext).selectByFieldKey("historyDevice", "devMac", this.currentAddress);
+        if(v0 != null) {
+            while(v0.moveToNext()) {
+                this.sendDensityToBt(((byte)v0.getInt(v0.getColumnIndex("devDensity"))));
+            }
+
+            v0.close();
+        }
+    }
+
+    public boolean sendDensityToBt(byte arg12) {
+        boolean v0;
+        byte[] v6 = new byte[]{arg12};
+        if(this.checkIfCanPrint(v6)) {
+            List v7 = this.addBytesToList(v6);
+            int v8;
+            for(v8 = 0; v8 < v7.size(); ++v8) {
+                this.msgQueue.add(this.packPerBytes(v7, BtCommandByte.PRT_SET_HEAT_DENSITY, v8));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+            DBManager.getInstance(BtManager.mContext).updateByField("historyDevice", "devMac", this.currentAddress, "devDensity", Byte.valueOf(arg12));
+            v0 = true;
+        }
+        else {
+            v0 = false;
+        }
+
+        return v0;
+    }
+
+    public void sendFeedLineToBt() {
+        this.sendFeedLineToBt(5);
+    }
+
+    public void sendFeedLineToBt(int arg7) {
+        byte[] v0 = CommonUtils.intTo2Bytes(arg7);
+        if(this.checkIfCanPrint(v0)) {
+            List v1 = this.addBytesToList(v0);
+            int v2;
+            for(v2 = 0; v2 < v1.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v1, BtCommandByte.PRT_FEED_LINE, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void sendFeedToHeadLineToBt(int arg7) {
+        byte[] v0 = CommonUtils.intTo2Bytes(arg7);
+        if(this.checkIfCanPrint(v0)) {
+            List v1 = this.addBytesToList(v0);
+            int v2;
+            for(v2 = 0; v2 < v1.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v1, BtCommandByte.PRT_FEED_TO_HEAD_LINE, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void sendImageBytesToBt(byte[] arg2) {
+        this.sendImageBytesToBt(arg2, null);
+    }
+
+    public void sendImageBytesToBt(byte[] arg1, OnBtDevPrintListener arg2) {
+        this.onBtDevPrintListener = arg2;
+        this.sendToBt(arg1);
+    }
+
+    public void sendImageToBt(Bitmap arg2) {
+        this.sendImageToBt(arg2, 2);
+    }
+
+    public void sendImageToBt(Bitmap arg2, int arg3) {
+        this.sendImageToBt(arg2, arg3, false);
+    }
+
+    public void sendImageToBt(Bitmap arg2, int arg3, boolean arg4) {
+        this.sendImageToBt(arg2, arg3, arg4, 1);
+    }
+
+    public void sendImageToBt(Bitmap arg3, int arg4, ChatMessageInfo arg5) {
+        this.sendImageToBt(arg3, 0);
+        ChatMessageDao.getInstance(BaseApplication.getInstance()).updateAntoPrintStatus(arg4, arg5);
+        BaseApplication.getInstance().mIsChatFriendListsChange = true;
+        EventBus.getDefault().post(new GetMsgEvent(arg4));
+    }
+
+    public void sendImageToBt(Bitmap arg8, int arg9, boolean arg10, int arg11) {
+        switch(arg9) {
+            case 0: {
+                int v1;
+                for(v1 = 0; v1 < arg11; ++v1) {
+                    this.sendImageToBt(arg8, null);
+                }
+            }
+            case 1: {
+                FakeImageAsyncTask v0 = new FakeImageAsyncTask(BtManager.mContext, 1000);
+                v0.execute(new Void[0]);
+                v0.setOnTaskReturnListener(new OnTaskReturnListener(arg11, arg8) {
+                    public void returnResult(Object arg5) {
+                        int v0;
+                        for(v0 = 0; v0 < this.val$copies; ++v0) {
+                            BtManager.this.sendImageToBt(this.val$bitmap, null);
+                        }
+                    }
+                });
+                break;
+            }
+            case 2: {
+                ProcessImageAsyncTask v2 = new ProcessImageAsyncTask(BtManager.mContext, arg8, 60000);
+                v2.execute(new Void[0]);
+                v2.setOnTaskReturnListener(new OnTaskReturnListener(arg11, arg10) {
+                    public void returnResult(Object arg6) {
+                        int v0;
+                        for(v0 = 0; v0 < this.val$copies; ++v0) {
+                            BtManager.this.sendImageToBt(arg6, null);
+                        }
+
+                        if(this.val$isNeedFinish) {
+                            BtManager.mContext.finish();
+                            BtManager.mContext.overridePendingTransition(0, 0);
+                        }
+                    }
+                });
+                break;
+            }
+        }
+    }
+
+    public void sendImageToBt(Bitmap arg4, OnBtDevPrintListener arg5) {
+        if(arg4 != null) {
+            if(arg4.getWidth() != 384) {
+                arg4 = ImageUtils.compressBitmapWithDefaultWidth(arg4);
+            }
+
+            BtManager.getInstance(BtManager.mContext).sendImageBytesToBt(ImageUtil.createPrintBitmapData(arg4), arg5);
+        }
+    }
+
+    public void sendImageToBt(Bitmap arg3, int arg4, boolean arg5, boolean arg6) {
+        OnBtDevPrintListener v1 = null;
+        switch(arg4) {
+            case 0: {
+                this.sendImageToBt(arg3, v1);
+                break;
+            }
+            case 1: {
+                this.sendImageToBt(arg3, v1);
+                break;
+            }
+            case 2: {
+                ProcessImageAsyncTask v0 = new ProcessImageAsyncTask(arg3, arg6);
+                v0.execute(new Void[0]);
+                v0.setOnTaskReturnListener(new OnTaskReturnListener(arg5) {
+                    public void returnResult(Object arg4) {
+                        BtManager.this.sendImageToBt(((Bitmap)arg4), null);
+                        if(this.val$isNeedFinish) {
+                            BtManager.mContext.finish();
+                            BtManager.mContext.overridePendingTransition(0, 0);
+                        }
+                    }
+                });
+                break;
+            }
+        }
+    }
+
+    public void sendImageUrlToBt(String arg3) {
+        ImageLoader.getInstance().loadImage(arg3, new SimpleImageLoadingListener() {
+            public void onLoadingComplete(String arg4, View arg5, Bitmap arg6) {
+                super.onLoadingComplete(arg4, arg5, arg6);
+                if(arg6 != null && (BtManager.getInstance(BtManager.mContext).isConnect)) {
+                    ProcessImageAsyncTask v0 = new ProcessImageAsyncTask(arg6, false);
+                    v0.execute(new Void[0]);
+                    v0.setOnTaskReturnListener(new OnTaskReturnListener() {
+                        public void returnResult(Object arg3) {
+                            this.this$1.this$0.sendImageToBt(((Bitmap)arg3), null);
+                        }
+                    });
+                }
+            }
+
+            public void onLoadingFailed(String arg3, View arg4, FailReason arg5) {
+                super.onLoadingFailed(arg3, arg4, arg5);
+                Message v0 = new Message();
+                v0.obj = arg5.toString();
+                v0.what = 10000;
+                BtManager.this.handler.sendMessage(v0);
+            }
+        });
+    }
+
+    private void sendMsgAllPackage(byte[] arg1) {
+        this.writeMsgDataToBt(arg1);
+    }
+
+    private void sendMsgSubPackage(byte[] arg11) {
+        int v6 = 6144;
+        byte[] v5 = new byte[v6];
+        int v0 = arg11.length / v5.length;
+        int v1;
+        for(v1 = 0; v1 < v0; ++v1) {
+            System.arraycopy(arg11, v1 * v6, v5, 0, v6);
+            this.sendMsgThread.write(v5);
+        }
+
+        int v3 = v1 * v6;
+        int v4 = arg11.length - v3;
+        if(v4 > 0) {
+            byte[] v2 = new byte[v4];
+            System.arraycopy(arg11, v3, v2, 0, v4);
+            this.sendMsgThread.write(v2);
+        }
+    }
+
+    private void sendMsgToBT(BluetoothSocket arg3) {
+        this.sendMsgThread = new SendMsgThread(arg3, this.handler);
+        this.sendMsgThread.start();
+    }
+
+    public boolean sendOffTimeToBt(byte[] arg10) {
+        boolean v0;
+        if(this.checkIfCanPrint(arg10)) {
+            List v6 = this.addBytesToList(arg10);
+            int v7;
+            for(v7 = 0; v7 < v6.size(); ++v7) {
+                this.msgQueue.add(this.packPerBytes(v6, BtCommandByte.PRT_SET_POWER_DOWN_TIME, v7));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+            DBManager.getInstance(BtManager.mContext).updateByField("historyDevice", "devMac", this.currentAddress, "devPowerDownTime", arg10);
+            v0 = true;
+        }
+        else {
+            v0 = false;
+        }
+
+        return v0;
+    }
+
+    public void sendPaperTypeToBt(int arg8) {
+        LogUtil.e("paperType = " + arg8);
+        byte[] v0 = new byte[]{((byte)arg8)};
+        if(this.checkIfCanPrint(v0, false)) {
+            List v1 = this.addBytesToList(v0);
+            int v2;
+            for(v2 = 0; v2 < v1.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v1, BtCommandByte.PRT_SET_PAPER_TYPE, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void sendPrintEndCommand() {
+        int v1 = BaseApplication.getInstance().printType;
+        this.sendPaperTypeToBt(v1);
+        switch(v1) {
+            case 0: {
+                this.sendFeedLineToBt(280);
+                break;
+            }
+            case 1: {
+                this.sendFeedToHeadLineToBt((PreferencesUtils.getLabelHeight() + 10) * 24 * 2);
+                this.sendFeedLineToBt(0);
+                break;
+            }
+        }
+    }
+
+    public void sendSelfTestToBt() {
+        byte[] v0 = new byte[]{0};
+        if(this.checkIfCanPrint(v0)) {
+            List v1 = this.addBytesToList(v0);
+            int v2;
+            for(v2 = 0; v2 < v1.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v1, BtCommandByte.PRT_PRINT_TEST_PAGE, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void sendToBt(byte[] arg5) {
+        if(this.checkIfCanPrint(arg5)) {
+            if(!this.isIdle) {
+                this.queue.add(arg5);
+            }
+            else {
+                this.sendPaperTypeToBt(BaseApplication.getInstance().printType);
+                List v0 = this.addBytesToList(arg5);
+                int v1;
+                for(v1 = 0; v1 < v0.size(); ++v1) {
+                    this.sendMsgAllPackage(this.packPerBytes(v0, BtCommandByte.PRT_PRINT_DATA, v1));
+                }
+
+                this.setIsIdle(false);
+                this.sendPrintEndCommand();
+                this.queryBatteryStatus();
+                this.msgQueue.clear();
+            }
+        }
+    }
+
+    public void sendUpdateToBt(OnBtFwUpdateListener arg7) {
+        this.onBtFwUpdateListener = arg7;
+        byte[] v1 = this.readBytes();
+        if(this.checkIfCanPrint(v1)) {
+            List v0 = this.addBytesToList(v1);
+            int v2;
+            for(v2 = 0; v2 < v0.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v0, BtCommandByte.PRT_FIRMWARE_DATA, v2));
+            }
+
+            if(arg7 != null) {
+                arg7.onBtFwUpdateStart(this.msgQueue.size());
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+        }
+    }
+
+    public void setCurrentAddress(String arg1) {
+        this.currentAddress = arg1;
+    }
+
+    public void setDiscoverableTimeout(int arg10) {
+        BluetoothAdapter v0 = BluetoothAdapter.getDefaultAdapter();
+        try {
+            Method v2 = BluetoothAdapter.class.getMethod("setDiscoverableTimeout", Integer.TYPE);
+            v2.setAccessible(true);
+            Method v3 = BluetoothAdapter.class.getMethod("setScanMode", Integer.TYPE, Integer.TYPE);
+            v3.setAccessible(true);
+            v2.invoke(v0, Integer.valueOf(arg10));
+            v3.invoke(v0, Integer.valueOf(23), Integer.valueOf(arg10));
+        }
+        catch(Exception v1) {
+            v1.printStackTrace();
+        }
+    }
+
+    public void setIsConnect(boolean arg3) {
+        LogUtil.e("setIsConnect = " + arg3);
+        this.isConnect = arg3;
+    }
+
+    public void setIsConnectHistory(boolean arg3) {
+        LogUtil.e("setIsConnectHistory = " + arg3);
+        this.isConnectHistory = arg3;
+    }
+
+    public void setIsConnecting(boolean arg3) {
+        LogUtil.e("setIsConnecting = " + arg3);
+        this.isConnecting = arg3;
+    }
+
+    public void setIsIdle(boolean arg3) {
+        LogUtil.e("setIsIdle = " + arg3);
+        this.isIdle = arg3;
+    }
+
+    public void setIsNeedReconnect(boolean arg3) {
+        LogUtil.e("setIsNeedReconnect = " + arg3);
+        this.isNeedReconnect = arg3;
+    }
+
+    public void setIsUpdate(boolean arg3) {
+        LogUtil.e("setIsUpdate = " + arg3);
+        this.isUpdate = arg3;
+    }
+
+    public void setIsUpdating(boolean arg3) {
+        LogUtil.e("setIsUpdating = " + arg3);
+        this.isUpdating = arg3;
+    }
+
+    public void setIsUserDisconnect(boolean arg5) {
+        boolean v1 = true;
+        LogUtil.e("setIsUserDisconnect = " + arg5);
+        this.isUserDisconnect = arg5;
+        boolean v0 = !this.isUserDisconnect() ? true : false;
+        this.setIsConnectHistory(v0);
+        if(this.isUserDisconnect()) {
+            v1 = false;
+        }
+
+        this.setIsNeedReconnect(v1);
+    }
+
+    public void setMacWillConnect(String arg3) {
+        LogUtil.e("setMac = " + arg3 + " to connect");
+        this.devMacForConnect = arg3;
+        this.setIsConnectHistory(true);
+    }
+
+    public void setMaxGapLength(int arg7) {
+        byte[] v0 = new byte[]{((byte)arg7)};
+        if(this.checkIfCanPrint(v0)) {
+            List v1 = this.addBytesToList(v0);
+            int v2;
+            for(v2 = 0; v2 < v1.size(); ++v2) {
+                this.msgQueue.add(this.packPerBytes(v1, BtCommandByte.PRT_SET_MAX_GAP_LENGTH, v2));
+            }
+
+            this.sendMsgAllPackage(this.msgQueue.get(0));
+            this.msgQueue.remove(0);
+        }
+    }
+
+    public void setOnBtDevConnectListener(OnBtDevConnectListener arg1) {
+        this.onBtDevConnectListener = arg1;
+    }
+
+    public void setOnBtDevPrintListener(OnBtDevPrintListener arg1) {
+        this.onBtDevPrintListener = arg1;
+    }
+
+    public void setOnBtFwUpdateListener(OnBtFwUpdateListener arg1) {
+        this.onBtFwUpdateListener = arg1;
+    }
+
+    public boolean setPairingConfirmation(BluetoothDevice arg9, boolean arg10) {
+        Boolean v1 = Boolean.valueOf(false);
+        try {
+            arg9.getClass().getDeclaredMethod("setPairingConfirmation", Boolean.TYPE).invoke(arg9, Boolean.valueOf(arg10));
+        }
+        catch(InvocationTargetException v0) {
+            v0.printStackTrace();
+        }
+        catch(IllegalAccessException v0_1) {
+            v0_1.printStackTrace();
+        }
+        catch(NoSuchMethodException v0_2) {
+            v0_2.printStackTrace();
+        }
+
+        return v1.booleanValue();
+    }
+
+    private void setPin(BluetoothDevice arg8, String arg9) {
+        try {
+            arg8.getClass().getDeclaredMethod("setPin", byte[].class).invoke(arg8, arg9.getBytes());
+        }
+        catch(NoSuchMethodException v0) {
+            v0.printStackTrace();
+        }
+        catch(InvocationTargetException v0_1) {
+            v0_1.printStackTrace();
+        }
+        catch(IllegalAccessException v0_2) {
+            v0_2.printStackTrace();
+        }
+    }
+
+    public void setServerFwVersionInfo(SwVersionResult arg1) {
+        this.fwVersionInfo = arg1;
+    }
+
+    private void showConnectingDialog() {
+        Runnable v3 = null;
+        if(this.catSearchDialog == null) {
+            this.catSearchDialog = DialogUtils.showCatSearchDialog(BtManager.mContext);
+            AnimationDrawable.animateRawManuallyFromXML(2130837590, this.catSearchDialog.findViewById(2131755267), v3, v3);
+        }
+
+        this.catSearchDialog.findViewById(2131755268).setText(2131361944);
+        this.catSearchDialog.findViewById(2131755269).setVisibility(8);
+        this.catSearchDialog.show();
+    }
+
+    private void showIfFwUpdateDialog(byte[] arg4) {
+        if(BtManager.getInstance(BtManager.mContext).getServerFwVersionInfo().versionCode > CommonUtils.byteVerToInt(arg4)) {
+            this.downloadFwBin(BtManager.getInstance(BtManager.mContext).getServerFwVersionInfo().swPath, arg4);
+        }
+    }
+
+    private void showIfNeedSearchBtDialog() {
+        if((BtManager.mContext instanceof Activity)) {
+            Dialog v0 = DialogUtils.showIfConnectMmjDialog(BtManager.mContext);
+            if(v0 != null && !BtManager.mContext.isFinishing()) {
+                v0.show();
+                v0.findViewById(2131755554).setOnClickListener(new View$OnClickListener(v0) {
+                    public void onClick(View arg2) {
+                        this.val$dialog.cancel();
+                        BtManager.this.onGoToSearchDevices();
+                    }
+                });
+            }
+        }
+    }
+
+    public void showPrintModeDialog(OnPrintCallBack arg14) {
+        Dialog v2 = DialogUtils.showPrintModeDialog(BtManager.mContext);
+        View v4 = v2.findViewById(2131755576);
+        View v12 = v2.findViewById(2131755577);
+        View v3 = v2.findViewById(2131755579);
+        View v10 = v2.findViewById(2131755580);
+        View v9 = v2.findViewById(2131755582);
+        View v6 = v2.findViewById(2131755581);
+        ((EditText)v6).setSelection(((EditText)v6).getText().toString().length());
+        View v11 = v2.findViewById(2131755583);
+        ((TextView)v4).setSelected(true);
+        ((TextView)v4).setOnClickListener(new View$OnClickListener(((TextView)v4), ((TextView)v12)) {
+            public void onClick(View arg3) {
+                this.val$tvGraphicPrint.setSelected(true);
+                this.val$tvTextPrint.setSelected(false);
+            }
+        });
+        ((TextView)v12).setOnClickListener(new View$OnClickListener(((TextView)v12), ((TextView)v4)) {
+            public void onClick(View arg3) {
+                this.val$tvTextPrint.setSelected(true);
+                this.val$tvGraphicPrint.setSelected(false);
+            }
+        });
+        DevHistoryModel v8 = this.selectConnedDeviceFromDB();
+        if(v8 != null) {
+            ((HorizontalAdjustView)v3).setConcentration(v8.getDevDensity());
+        }
+
+        ((ImageView)v10).setOnClickListener(new View$OnClickListener(((EditText)v6), ((ImageView)v10)) {
+            public void onClick(View arg4) {
+                this.val$edtQuantity.setText(Integer.valueOf(this.val$edtQuantity.getText().toString()).intValue() - 1 + "");
+                this.val$edtQuantity.setSelection(this.val$edtQuantity.getText().toString().length());
+                if(Integer.valueOf(this.val$edtQuantity.getText().toString()).intValue() <= 1) {
+                    this.val$ivReduce.setImageResource(2130837755);
+                    this.val$edtQuantity.setText("1");
+                }
+
+                this.val$edtQuantity.setSelection(this.val$edtQuantity.getText().toString().length());
+            }
+        });
+        ((ImageView)v9).setOnClickListener(new View$OnClickListener(((EditText)v6)) {
+            public void onClick(View arg4) {
+                this.val$edtQuantity.setText(Integer.valueOf(this.val$edtQuantity.getText().toString()).intValue() + 1 + "");
+                this.val$edtQuantity.setSelection(this.val$edtQuantity.getText().toString().length());
+                if(Integer.valueOf(this.val$edtQuantity.getText().toString()).intValue() >= 999) {
+                    this.val$edtQuantity.setText("999");
+                }
+
+                this.val$edtQuantity.setSelection(this.val$edtQuantity.getText().toString().length());
+            }
+        });
+        ((TextView)v11).setOnClickListener(new View$OnClickListener(v2, ((HorizontalAdjustView)v3), ((TextView)v4), arg14, ((EditText)v6)) {
+            public void onClick(View arg4) {
+                this.val$dialog.cancel();
+                BtManager.this.sendDensityToBt(((byte)this.val$adjustView.getConcentration()));
+                if(this.val$tvGraphicPrint.isSelected()) {
+                    if(this.val$callBack != null) {
+                        this.val$callBack.onPrintGraphic(Integer.valueOf(this.val$edtQuantity.getText().toString()).intValue());
+                    }
+                }
+                else if(this.val$callBack != null) {
+                    this.val$callBack.onPrintText(Integer.valueOf(this.val$edtQuantity.getText().toString()).intValue());
+                }
+            }
+        });
+        ((EditText)v6).addTextChangedListener(new TextWatcher(((ImageView)v10), ((EditText)v6)) {
+            public void afterTextChanged(Editable arg3) {
+                if((TextUtils.isEmpty(((CharSequence)arg3))) || Integer.valueOf(arg3.toString()).intValue() != 1) {
+                    this.val$ivReduce.setImageResource(2130837754);
+                }
+                else {
+                    this.val$ivReduce.setImageResource(2130837755);
+                }
+
+                if((TextUtils.isEmpty(((CharSequence)arg3))) || arg3.length() <= 0) {
+                    this.val$edtQuantity.setText("1");
+                    this.val$edtQuantity.selectAll();
+                }
+            }
+
+            public void beforeTextChanged(CharSequence arg1, int arg2, int arg3, int arg4) {
+            }
+
+            public void onTextChanged(CharSequence arg1, int arg2, int arg3, int arg4) {
+            }
+        });
+        v2.show();
+    }
+
+    private void startDiscovery() {
+        if(this.btAdapter != null) {
+            this.cancelDiscovery();
+            LogUtil.e("startDiscovery");
+            this.btAdapter.startDiscovery();
+        }
+    }
+
+    public void unregisterBluetooth() {
+        LogUtil.e(" view that can be bounds by this SimpleCursorAdapter");
+        try {
+            if(this.bluetoothReceiver == null) {
+                return;
+            }
+
+            BtManager.mContext.unregisterReceiver(this.bluetoothReceiver);
+            this.bluetoothReceiver = null;
+        }
+        catch(Exception v0) {
+            LogUtil.e("unregisterBluetooth error = " + v0.toString());
+        }
+    }
+
+    private void writeBytesTxt(String arg3) {
+        this.writeTxtToFile(arg3, "/sdcard/Test/", "log_bytes.txt");
+    }
+
+    private void writeMsgDataToBt(byte[] arg3) {
+        if(this.sendMsgThread != null) {
+            this.handler.post(new Runnable() {
+                public void run() {
+                    if(BtManager.this.onBtDevPrintListener != null) {
+                        LogUtil.e("onBtDataSendFinish");
+                        BtManager.this.onBtDevPrintListener.onBtDataSendFinish();
+                    }
+                }
+            });
+            MsgQueueUtil.getInstance().sendMsgPackage(this.sendMsgThread, arg3);
+        }
+    }
+
+    public void writeTxtToFile(String arg9, String arg10, String arg11) {
+        this.makeFilePath(arg10, arg11);
+        String v4 = arg10 + arg11;
+        String v3 = arg9 + "\r\n";
+        try {
+            File v1 = new File(v4);
+            if(!v1.exists()) {
+                Log.d("TestFile", "Create the file:" + v4);
+                v1.getParentFile().mkdirs();
+                v1.createNewFile();
+            }
+
+            RandomAccessFile v2 = new RandomAccessFile(v1, "rwd");
+            v2.seek(v1.length());
+            v2.write(v3.getBytes());
+            v2.close();
+        }
+        catch(Exception v0) {
+            Log.e("TestFile", "Error on write File:" + v0);
+        }
+    }
+}
+
